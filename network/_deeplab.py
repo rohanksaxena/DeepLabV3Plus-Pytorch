@@ -54,8 +54,9 @@ class DeepLabHeadV3Plus(nn.Module):
 
         output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear',
                                        align_corners=False)
+        output = self.classifier(torch.cat([low_level_feature, output_feature], dim=1))
 
-        # Visualize output and low_level features
+        # Visualize output and low_level features and final output
 
         for name, _ in self.named_children():
             if name == 'project':
@@ -66,8 +67,11 @@ class DeepLabHeadV3Plus(nn.Module):
                 feature_map = output_feature
                 ncols = 16
                 nrows = 16
-            else:
-                break
+            elif name == 'classifier':
+                name = 'Final output'
+                ncols = 7
+                nrows = 3
+                feature_map = output
             feature_map = feature_map.squeeze(0)
             feature_map = feature_map.cpu().numpy()
             mask = Image.open(
@@ -90,7 +94,7 @@ class DeepLabHeadV3Plus(nn.Module):
             plt.suptitle(name)
             plt.show()
 
-        return self.classifier(torch.cat([low_level_feature, output_feature], dim=1))
+        return output
 
     def _init_weight(self):
         for m in self.modules():

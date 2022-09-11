@@ -59,12 +59,10 @@ class IntermediateLayerGetter(nn.ModuleDict):
             raise ValueError("return_layers are not present in model")
 
         self.hrnet_flag = hrnet_flag
-        # print("init backbone: ", model)
         orig_return_layers = return_layers
         return_layers = {k: v for k, v in return_layers.items()}
         layers = OrderedDict()
         for name, module in model.named_children():
-            # print('Init Name: ', name, ' | Module: ', module)
             layers[name] = module
             if name in return_layers:
                 del return_layers[name]
@@ -85,7 +83,6 @@ class IntermediateLayerGetter(nn.ModuleDict):
             else:  # other models (ex:resnet,mobilenet) are convolutions in series.
 
                 x = module(x)
-
                 m = nn.ReLU()
                 output = m(x)
                 feature_maps = output.squeeze(0)
@@ -116,6 +113,7 @@ class IntermediateLayerGetter(nn.ModuleDict):
                     label = np.multiply(label, mask)
                     fig.add_subplot(nrows, ncols, i + 1)
                     plt.imshow(label)
+                plt.suptitle(name)
                 plt.show()
 
             if name in self.return_layers:

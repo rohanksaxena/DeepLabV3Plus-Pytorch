@@ -1,9 +1,12 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+import numpy as np
+from PIL import Image
+import matplotlib.pyplot as plt
+import cv2
 
 from .utils import _SimpleSegmentationModel
-
 
 __all__ = ["DeepLabV3"]
 
@@ -25,10 +28,11 @@ class DeepLabV3(_SimpleSegmentationModel):
     """
     pass
 
+
 class DeepLabHeadV3Plus(nn.Module):
     def __init__(self, in_channels, low_level_channels, num_classes, aspp_dilate=[12, 24, 36]):
         super(DeepLabHeadV3Plus, self).__init__()
-        self.project = nn.Sequential( 
+        self.project = nn.Sequential(
             nn.Conv2d(low_level_channels, 48, 1, bias=False),
             nn.BatchNorm2d(48),
             nn.ReLU(inplace=True),
@@ -45,11 +49,49 @@ class DeepLabHeadV3Plus(nn.Module):
         self._init_weight()
 
     def forward(self, feature):
-        low_level_feature = self.project( feature['low_level'] )
+        low_level_feature = self.project(feature['low_level'])
         output_feature = self.aspp(feature['out'])
-        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear', align_corners=False)
-        return self.classifier( torch.cat( [ low_level_feature, output_feature ], dim=1 ) )
-    
+
+        output_feature = F.interpolate(output_feature, size=low_level_feature.shape[2:], mode='bilinear',
+                                       align_corners=False)
+
+        # Visualize output and low_level features
+
+        for name, _ in self.named_children():
+            if name == 'project':
+                feature_map = low_level_feature
+                ncols = 8
+                nrows = 6
+            elif name == 'aspp':
+                feature_map = output_feature
+                ncols = 16
+                nrows = 16
+            else:
+                break
+            feature_map = feature_map.squeeze(0)
+            feature_map = feature_map.cpu().numpy()
+            mask = Image.open(
+                'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.png')
+            mask = mask.resize((feature_map.shape[2], feature_map.shape[1]))
+            mask = np.asarray(mask)
+            mask[mask > 0] = 255
+            fig = plt.figure(figsize=(feature_map.shape[1], feature_map.shape[2]))
+            for i, map in enumerate(feature_map):
+                map = np.multiply(map, mask)
+                z = map.reshape(-1)
+                z = np.float32(z)
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+                K = 5
+                ret, label, center = cv2.kmeans(z, K, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+                label = label.reshape((feature_map.shape[1], feature_map.shape[2]))
+                label = np.multiply(label, mask)
+                fig.add_subplot(nrows, ncols, i + 1)
+                plt.imshow(label)
+            plt.suptitle(name)
+            plt.show()
+
+        return self.classifier(torch.cat([low_level_feature, output_feature], dim=1))
+
     def _init_weight(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -57,6 +99,7 @@ class DeepLabHeadV3Plus(nn.Module):
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
+
 
 class DeepLabHead(nn.Module):
     def __init__(self, in_channels, num_classes, aspp_dilate=[12, 24, 36]):
@@ -72,7 +115,7 @@ class DeepLabHead(nn.Module):
         self._init_weight()
 
     def forward(self, feature):
-        return self.classifier( feature['out'] )
+        return self.classifier(feature['out'])
 
     def _init_weight(self):
         for m in self.modules():
@@ -82,19 +125,22 @@ class DeepLabHead(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
+
 class AtrousSeparableConvolution(nn.Module):
     """ Atrous Separable Convolution
     """
+
     def __init__(self, in_channels, out_channels, kernel_size,
-                            stride=1, padding=0, dilation=1, bias=True):
+                 stride=1, padding=0, dilation=1, bias=True):
         super(AtrousSeparableConvolution, self).__init__()
         self.body = nn.Sequential(
             # Separable Conv
-            nn.Conv2d( in_channels, in_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, bias=bias, groups=in_channels ),
+            nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, padding=padding,
+                      dilation=dilation, bias=bias, groups=in_channels),
             # PointWise Conv
-            nn.Conv2d( in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=bias),
+            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=bias),
         )
-        
+
         self._init_weight()
 
     def forward(self, x):
@@ -108,6 +154,7 @@ class AtrousSeparableConvolution(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
+
 class ASPPConv(nn.Sequential):
     def __init__(self, in_channels, out_channels, dilation):
         modules = [
@@ -116,6 +163,7 @@ class ASPPConv(nn.Sequential):
             nn.ReLU(inplace=True)
         ]
         super(ASPPConv, self).__init__(*modules)
+
 
 class ASPPPooling(nn.Sequential):
     def __init__(self, in_channels, out_channels):
@@ -129,6 +177,7 @@ class ASPPPooling(nn.Sequential):
         size = x.shape[-2:]
         x = super(ASPPPooling, self).forward(x)
         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+
 
 class ASPP(nn.Module):
     def __init__(self, in_channels, atrous_rates):
@@ -152,7 +201,7 @@ class ASPP(nn.Module):
             nn.Conv2d(5 * out_channels, out_channels, 1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Dropout(0.1),)
+            nn.Dropout(0.1), )
 
     def forward(self, x):
         res = []
@@ -162,17 +211,16 @@ class ASPP(nn.Module):
         return self.project(res)
 
 
-
 def convert_to_separable_conv(module):
     new_module = module
-    if isinstance(module, nn.Conv2d) and module.kernel_size[0]>1:
+    if isinstance(module, nn.Conv2d) and module.kernel_size[0] > 1:
         new_module = AtrousSeparableConvolution(module.in_channels,
-                                      module.out_channels, 
-                                      module.kernel_size,
-                                      module.stride,
-                                      module.padding,
-                                      module.dilation,
-                                      module.bias)
+                                                module.out_channels,
+                                                module.kernel_size,
+                                                module.stride,
+                                                module.padding,
+                                                module.dilation,
+                                                module.bias)
     for name, child in module.named_children():
         new_module.add_module(name, convert_to_separable_conv(child))
     return new_module

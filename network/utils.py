@@ -87,12 +87,12 @@ class IntermediateLayerGetter(nn.ModuleDict):
                 output = m(x)
                 feature_maps = output.squeeze(0)
                 feature_maps = feature_maps.cpu().numpy()
-                mask = Image.open(
-                    'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.png')  # Read image mask
-                mask = mask.resize((feature_maps.shape[2],
-                                    feature_maps.shape[1]))  # Reshape mask to spatial resolution of feature maps
-                mask = np.asarray(mask)
-                mask[mask > 0] = 255
+                # mask = Image.open(
+                #     'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.png')  # Read image mask
+                # mask = mask.resize((feature_maps.shape[2],
+                #                     feature_maps.shape[1]))  # Reshape mask to spatial resolution of feature maps
+                # mask = np.asarray(mask)
+                # mask[mask > 0] = 255
 
                 fig = plt.figure(figsize=(feature_maps.shape[1], feature_maps.shape[2]))
                 if name == 'low_level_features':
@@ -103,18 +103,38 @@ class IntermediateLayerGetter(nn.ModuleDict):
                     nrows = 16
 
                 for i, map in enumerate(feature_maps):
-                    map = np.multiply(map, mask)
+                    # map = np.multiply(map, mask)
                     z = map.reshape(-1)
                     z = np.float32(z)
                     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
                     K = 5
                     ret, label, center = cv2.kmeans(z, K, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
                     label = label.reshape((feature_maps.shape[1], feature_maps.shape[2]))
-                    label = np.multiply(label, mask)
+                    # label = np.multiply(label, mask)
                     fig.add_subplot(nrows, ncols, i + 1)
                     plt.imshow(label)
+                    plt.axis('off')
                 plt.suptitle(name)
-                plt.show()
+                plt.savefig(f'{name}.jpg')
+                plt.clf()
+                plt.close()
+
+
+                # Cluster pixels in channel dimension
+                # Vectorize features
+                maps = feature_maps.reshape((feature_maps.shape[0]), -1).T
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+                K = 5
+                attempts = 10
+                ret, label, center = cv2.kmeans(maps, K, None, criteria, attempts, cv2.KMEANS_PP_CENTERS)
+                result_image = label.reshape((feature_maps.shape[1], feature_maps.shape[2]))
+                plt.imshow(result_image)
+                plt.axis('off')
+                plt.savefig(f'{name}_clustered.jpg')
+                plt.clf()
+                plt.close()
+
+
 
             if name in self.return_layers:
                 out_name = self.return_layers[name]

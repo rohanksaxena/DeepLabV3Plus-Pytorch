@@ -74,25 +74,42 @@ class DeepLabHeadV3Plus(nn.Module):
                 feature_map = output
             feature_map = feature_map.squeeze(0)
             feature_map = feature_map.cpu().numpy()
-            mask = Image.open(
-                'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.png')
-            mask = mask.resize((feature_map.shape[2], feature_map.shape[1]))
-            mask = np.asarray(mask)
-            mask[mask > 0] = 255
+            # mask = Image.open(
+            #     'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.png')
+            # mask = mask.resize((feature_map.shape[2], feature_map.shape[1]))
+            # mask = np.asarray(mask)
+            # mask[mask > 0] = 255
             fig = plt.figure(figsize=(feature_map.shape[1], feature_map.shape[2]))
             for i, map in enumerate(feature_map):
-                map = np.multiply(map, mask)
+                # map = np.multiply(map, mask)
                 z = map.reshape(-1)
                 z = np.float32(z)
                 criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
                 K = 5
                 ret, label, center = cv2.kmeans(z, K, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
                 label = label.reshape((feature_map.shape[1], feature_map.shape[2]))
-                label = np.multiply(label, mask)
+                # label = np.multiply(label, mask)
                 fig.add_subplot(nrows, ncols, i + 1)
                 plt.imshow(label)
+                plt.axis('off')
             plt.suptitle(name)
-            plt.show()
+            plt.savefig(f'{name}.jpg')
+            plt.clf()
+            plt.close()
+
+            # Cluster pixels in channel dimension
+            # Vectorize features
+            maps = feature_map.reshape((feature_map.shape[0]), -1).T
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+            K = 5
+            attempts = 10
+            ret, label, center = cv2.kmeans(maps, K, None, criteria, attempts, cv2.KMEANS_PP_CENTERS)
+            result_image = label.reshape((feature_map.shape[1], feature_map.shape[2]))
+            plt.imshow(result_image)
+            plt.axis('off')
+            plt.savefig(f'{name}_clustered.jpg')
+            plt.clf()
+            plt.close()
 
         return output
 

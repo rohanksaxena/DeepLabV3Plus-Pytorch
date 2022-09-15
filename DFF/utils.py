@@ -2,7 +2,8 @@ import PIL
 import numpy as np
 from matplotlib import pyplot as plt
 import skimage, skimage.transform
-
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 # Image resize
 def imresize(img, height=None, width=None):
     # load image
@@ -22,8 +23,7 @@ def imresize(img, height=None, width=None):
     return skimage.transform.resize(img, (int(ny), int(nx)), mode='constant')
 
 # Heat map visualization
-def show_heatmaps(imgs, masks, K, enhance=1, title=None, cmap='gist_rainbow'):
-
+def show_heatmaps(module_name, imgs, masks, K, enhance=1, title=None, cmap='gist_rainbow'):
     if K > 0:
         _cmap = plt.cm.get_cmap(cmap)
         colors = [np.array(_cmap(i)[:3]) for i in np.arange(0,1,1/K)]
@@ -45,9 +45,10 @@ def show_heatmaps(imgs, masks, K, enhance=1, title=None, cmap='gist_rainbow'):
             mask = masks[i][k]
             layer[:,:,3] = mask
             plt.imshow(layer)
+            plt.savefig(f'{module_name}_{k+1}')
             plt.axis('off')
-
+    plt.clf()
+    plt.close()
     plt.tight_layout(pad=0, w_pad=0, h_pad=0)
-    plt.show()
 
 

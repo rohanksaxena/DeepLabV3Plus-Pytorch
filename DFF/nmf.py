@@ -1,5 +1,6 @@
 import torch, math, time
-
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 EPSILON = 1e-7
 
 # NMF by multiplictive updates

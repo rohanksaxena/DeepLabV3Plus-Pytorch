@@ -5,7 +5,8 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 import cv2
-
+from DFF.nmf import NMF
+from DFF.utils import show_heatmaps
 from .utils import _SimpleSegmentationModel
 
 __all__ = ["DeepLabV3"]
@@ -72,6 +73,7 @@ class DeepLabHeadV3Plus(nn.Module):
                 ncols = 7
                 nrows = 3
                 feature_map = output
+            features = feature_map
             feature_map = feature_map.squeeze(0)
             feature_map = feature_map.cpu().numpy()
             # mask = Image.open(
@@ -110,6 +112,28 @@ class DeepLabHeadV3Plus(nn.Module):
             plt.savefig(f'{name}_clustered.jpg')
             plt.clf()
             plt.close()
+
+            # ======================
+            # Visualize NMF
+            img = Image.open(
+                'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.jpg')  # Read image mask
+            img = np.asarray(img)
+            img = np.expand_dims(img, axis=0)
+
+            flat_features = features.permute(0, 2, 3, 1).contiguous().view(
+                (-1, features.size(1)))  # NxCxHxW -> (N*H*W)xC
+            print(f'Heatmaps for layer: {name}')
+            for K in range(1, 7):
+                W, _ = NMF(flat_features, K, random_seed=0, cuda='cuda:0', max_iter=50)
+                heatmaps = W.cpu().view(features.size(0), features.size(2), features.size(3), K).permute(0, 3, 1,
+                                                                                                         2)  # (N*H*W)xK -> NxKxHxW
+                heatmaps = torch.nn.functional.interpolate(heatmaps, size=(img.shape[1], img.shape[2]), mode='bilinear',
+                                                           align_corners=False)  ## 14x14 -> 224x224
+                heatmaps /= heatmaps.max(dim=3, keepdim=True)[0].max(dim=2, keepdim=True)[
+                    0]  # normalize by factor (i.e., 1 of K)
+                heatmaps = heatmaps.cpu().numpy()
+                show_heatmaps(name, img, heatmaps, K, title='$k$ = {}'.format(K), enhance=0.3)
+            # ======================
 
         return output
 

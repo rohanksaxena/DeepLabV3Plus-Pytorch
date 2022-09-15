@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 import cv2
 import torch.nn.functional as F
 from collections import OrderedDict
+from DFF.nmf import NMF
+from DFF.utils import show_heatmaps
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 class _SimpleSegmentationModel(nn.Module):
@@ -87,12 +92,29 @@ class IntermediateLayerGetter(nn.ModuleDict):
                 output = m(x)
                 feature_maps = output.squeeze(0)
                 feature_maps = feature_maps.cpu().numpy()
-                # mask = Image.open(
-                #     'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.png')  # Read image mask
-                # mask = mask.resize((feature_maps.shape[2],
-                #                     feature_maps.shape[1]))  # Reshape mask to spatial resolution of feature maps
-                # mask = np.asarray(mask)
-                # mask[mask > 0] = 255
+
+                # ======================
+                # Visualize NMF
+                img = Image.open(
+                    'D:\\Workspaces\\Thesis\\deeplab\\DeepLabV3Plus-Pytorch\\Sooty_Albatross_0031_1066.jpg')  # Read image mask
+                img = np.asarray(img)
+                img = np.expand_dims(img, axis=0)
+                features = output
+                flat_features = features.permute(0, 2, 3, 1).contiguous().view(
+                    (-1, features.size(1)))  # NxCxHxW -> (N*H*W)xC
+                print(f'Heatmaps for layer: {name}')
+                for K in range(1, 7):
+                    W, _ = NMF(flat_features, K, random_seed=0, cuda='cuda:0', max_iter=50)
+                    heatmaps = W.cpu().view(features.size(0), features.size(2), features.size(3), K).permute(0, 3, 1,
+                                                                                                             2)  # (N*H*W)xK -> NxKxHxW
+                    heatmaps = torch.nn.functional.interpolate(heatmaps, size=(img.shape[1], img.shape[2]),
+                                                               mode='bilinear',
+                                                               align_corners=False)  ## 14x14 -> 224x224
+                    heatmaps /= heatmaps.max(dim=3, keepdim=True)[0].max(dim=2, keepdim=True)[
+                        0]  # normalize by factor (i.e., 1 of K)
+                    heatmaps = heatmaps.cpu().numpy()
+                    show_heatmaps(name, img, heatmaps, K, title='$k$ = {}'.format(K), enhance=0.3)
+                # ======================
 
                 fig = plt.figure(figsize=(feature_maps.shape[1], feature_maps.shape[2]))
                 if name == 'low_level_features':
@@ -103,14 +125,12 @@ class IntermediateLayerGetter(nn.ModuleDict):
                     nrows = 16
 
                 for i, map in enumerate(feature_maps):
-                    # map = np.multiply(map, mask)
                     z = map.reshape(-1)
                     z = np.float32(z)
                     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
                     K = 5
                     ret, label, center = cv2.kmeans(z, K, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
                     label = label.reshape((feature_maps.shape[1], feature_maps.shape[2]))
-                    # label = np.multiply(label, mask)
                     fig.add_subplot(nrows, ncols, i + 1)
                     plt.imshow(label)
                     plt.axis('off')
@@ -118,7 +138,6 @@ class IntermediateLayerGetter(nn.ModuleDict):
                 plt.savefig(f'{name}.jpg')
                 plt.clf()
                 plt.close()
-
 
                 # Cluster pixels in channel dimension
                 # Vectorize features
@@ -133,8 +152,6 @@ class IntermediateLayerGetter(nn.ModuleDict):
                 plt.savefig(f'{name}_clustered.jpg')
                 plt.clf()
                 plt.close()
-
-
 
             if name in self.return_layers:
                 out_name = self.return_layers[name]
